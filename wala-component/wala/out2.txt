@@ -1,0 +1,7 @@
+> Task :compileJava
+> Task :processResources NO-SOURCE
+> Task :classes
+
+> Task :startAnalysis
+ADDING /home/smabbasz/Desktop/CS 858 Project/wala-workshop/wala-workshop-skeleton/./Input/framework/oat/arm64/mdcservice_classes.dex
+ADDING /home/smabbasz/Desktop/CS 858 Project/wala-workshop/wala-workshop-skeleton/./Input/framework/oat/arm64/services_classes.dex

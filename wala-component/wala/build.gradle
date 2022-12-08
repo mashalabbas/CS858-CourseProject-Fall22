@@ -1,0 +1,67 @@
+plugins {
+    id 'java'
+}
+
+apply plugin: 'java'
+apply plugin: 'application'
+
+version 'unspecified'
+
+mainClassName = 'com.uwaterloo.wala.workshop.Main'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+distributions {
+    main {
+        distributionBaseName = 'Skeleton'
+        // include the configuration files into the distribution zip
+        contents {
+            into('/' + distributions.main.distributionBaseName) {
+                from '.'
+                include 'dat/*'
+            }
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src/main/java"]
+        }
+        resources {
+            srcDirs = ["src/main/res"]
+        }
+    }
+}
+
+jar {
+    archiveBaseName = 'WalaSkeleton'
+    archiveVersion = '0.1'
+    manifest {
+        attributes 'Main-Class': 'com.uwaterloo.wala.workshop.Main'
+    }
+}
+
+dependencies {
+    implementation group: 'com.google.guava', name: 'guava', version: '13.0.1'
+    implementation fileTree(dir: 'lib', include: ['com.ibm.wala.*.jar'])
+    implementation fileTree(dir: 'lib', include: ['dexlib*.jar'])
+    implementation fileTree(dir: 'lib', include: ['apktool*.jar'])
+    implementation "org.apache.logging.log4j:log4j-api:2.4"
+    implementation "org.apache.logging.log4j:log4j-core:2.4"
+    implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.2'
+    implementation group: 'ch.qos.logback', name: 'logback-core', version: '1.0.9'
+    implementation group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.9'
+}
+
+task startAnalysis(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    main = 'com.uwaterloo.wala.workshop.Main'
+    systemProperties System.getProperties()
+}
