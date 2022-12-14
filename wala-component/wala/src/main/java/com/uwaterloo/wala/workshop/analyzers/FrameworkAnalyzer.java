@@ -1,5 +1,6 @@
 package com.uwaterloo.wala.workshop.analyzers;
 
+import java.lang.reflect.Array;
 import java.util.*;
 
 import com.ibm.wala.classLoader.IBytecodeMethod;
@@ -24,7 +25,9 @@ import com.ibm.wala.ssa.SSAAbstractInvokeInstruction;
 import com.ibm.wala.ssa.SSANewInstruction;
 import com.ibm.wala.ssa.SSAInstruction;
 import com.ibm.wala.ssa.SymbolTable;
+import com.ibm.wala.types.TypeReference;
 import com.uwaterloo.wala.workshop.utils.ScopeUtil;
+import com.uwaterloo.wala.workshop.objects.MethodObject;
 
 import java.io.FileWriter;
 
@@ -54,8 +57,10 @@ public class FrameworkAnalyzer {
             IClass binderClass = null;
             IClass binderSuperClass = null; 
             IClass serviceClass = null;
-            ArrayList<String> apiNames = new ArrayList<>();
-            ArrayList<String> interfaceMethods = new ArrayList<>();
+//            ArrayList<String> apiNames = new ArrayList<>();
+            ArrayList<IMethod> apiMehtodList = new ArrayList<>();
+//            ArrayList<String> interfaceMethods = new ArrayList<>();
+            ArrayList<IMethod> interfaceMethodList = new ArrayList<>();
 
 
             // System.out.println("Class: " + c.getName());
@@ -117,8 +122,6 @@ public class FrameworkAnalyzer {
 
             if(entrypoints.size() < 1) continue;
 
-            // An array for the APIs that are extracted
-            ArrayList<DefaultEntrypoint> apis = new ArrayList<>();
 
             // Making a call graph of all the entry points to find services
             // System.out.println("Building call graph...");
@@ -135,7 +138,8 @@ public class FrameworkAnalyzer {
             }
     
              System.out.println("Call Graph Made");
-    
+
+            ArrayList<DefaultEntrypoint> apientrypoints = new ArrayList<>();
     
             for(CGNode node : cg){
                 if(node.getIR() == null){
@@ -258,13 +262,24 @@ public class FrameworkAnalyzer {
                                 }
                             }   
 
-                            if(binderClass != null){    
+                            if(binderClass != null){
+
+                                // Get method list from stub interface
+                                if(binderSuperClass.toString().contains("<")){
+                                    interfaceMethodList = getClassMethodList(binderSuperClass.toString().split(",")[1].split(">")[0], cha);
+                                }else{
+                                    interfaceMethodList = getClassMethodList(binderSuperClass.getName().toString(), cha);
+                                }
+
                                 for(IMethod m : binderClass.getDeclaredMethods() ){
                                     if(m.isPublic()){
-//                                         System.out.println("API Found: " + m.getName().toString());
-                                        DefaultEntrypoint de1 = new DefaultEntrypoint(m, cha);
-                                        apis.add(de1);
-                                        apiNames.add(m.getName().toString());
+                                        // If m is in stub interface
+                                        if(matchMethodSignature(m, interfaceMethodList)){
+                                            DefaultEntrypoint de1 = new DefaultEntrypoint(m, cha);
+                                            apientrypoints.add(de1);
+                                            apiMehtodList.add(m);
+                                        }
+
                                     }
                                 }
                             }
@@ -276,34 +291,23 @@ public class FrameworkAnalyzer {
        
             }
 
-            // Continue if class has no methods
-            if(apiNames.size() < 1){continue;}
 
-            // Collecting binderClass stub methods
-            if(binderSuperClass.toString().contains("<")){
-//                System.out.println("IN HEREEEEE");
-
-                interfaceMethods = getClassStringMethods(binderSuperClass.toString().split(",")[1].split(">")[0], cha);
-            }else{
-                interfaceMethods = getClassStringMethods(binderSuperClass.getName().toString(), cha);
-            }
-
-//            for(String kk : interfaceMethods){
-//                System.out.println("INTERFACE METHODS: " + kk);
+//            // Collecting binderClass stub methods
+//            if(binderSuperClass.toString().contains("<")){
+////                System.out.println("IN HEREEEEE");
+//
+//                interfaceMethods = getClassStringMethods(binderSuperClass.toString().split(",")[1].split(">")[0], cha);
+//            }else{
+//                interfaceMethods = getClassStringMethods(binderSuperClass.getName().toString(), cha);
 //            }
+//
+////            for(String kk : interfaceMethods){
+////                System.out.println("INTERFACE METHODS: " + kk);
+////            }
+//
+//            // Eliminating apis which are not in Stub
+//            apiNames.retainAll(interfaceMethods);
 
-            // Eliminating apis which are not in Stub
-            apiNames.retainAll(interfaceMethods);
-
-
-            // Adding API entrypoints
-            ArrayList<DefaultEntrypoint> apientrypoints = new ArrayList<>();
-
-            for(IMethod currMethod : binderClass.getAllMethods()){
-               if(apiNames.contains(currMethod.getName().toString())){
-                   apientrypoints.add(new DefaultEntrypoint(currMethod, cha));
-               }
-            }
 
             if(apientrypoints.size()<1){continue;}
 
@@ -318,7 +322,8 @@ public class FrameworkAnalyzer {
 
 
             for(CGNode node : cg1){
-                if(apiNames.contains(node.getMethod().getName().toString())){
+//                if(apiNames.contains(node.getMethod().getName().toString())){
+                if(matchMethodSignature(node.getMethod(), apiMehtodList)){
                     if(node.getMethod().getName().toString().contains("init")){continue;}
 
                     if(!(binderClass.getName().toString().equals(node.getMethod().getDeclaringClass().getName().toString()))){continue;}
@@ -331,11 +336,41 @@ public class FrameworkAnalyzer {
 
                     System.out.println("********************");
 
+                    String APIname = node.getMethod().getName().toString();
 
-                    System.out.println("API Name: " + node.getMethod().getName().toString());
+                    System.out.println("API Name: " + APIname);
 
 
+                    String specializes = "None";
+                    for(CGNode node2 : cg1){
+                        // If methods name's match
+                        if(node2.getMethod().getName().toString().equals(APIname)){
 
+                            // If new method --- node2 --- is also an API
+                            if(matchMethodSignature(node2.getMethod(), apiMehtodList)){
+
+                                // If new method --- node2 --- has more number of params
+                                if(node2.getMethod().getNumberOfParameters() > node.getMethod().getNumberOfParameters()){
+
+                                    // If new method --- node2 --- also belongs to the same declaring class
+                                    if(node2.getMethod().getParameterType(0).toString().equals(node.getMethod().getParameterType(0).toString())){
+                                        specializes = node2.getMethod().getName().toString();
+
+                                        ArrayList<String> params2 = new ArrayList<>();
+
+                                        for(int i = 0; i < node2.getMethod().getNumberOfParameters(); i++){
+                                            // System.out.println("Type of Parameters: " + node.getMethod().getParameterType(i));
+                                            params2.add(node2.getMethod().getParameterType(i).toString());
+                                        }
+
+                                        specializes += " " + params2.toString();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    System.out.println("Specialized: " + specializes);
 
 
                     System.out.println("No of Parameters: " + node.getMethod().getNumberOfParameters());
@@ -348,6 +383,8 @@ public class FrameworkAnalyzer {
                     if(params.size() >= 1){
                         System.out.println("Parameter Types: " + params.toString());
                     }
+
+                    System.out.println("Return Type: " + node.getMethod().getReturnType().toString());
                     if(node == null){
                         continue;
                     }
@@ -398,6 +435,79 @@ public class FrameworkAnalyzer {
  
 
         
+    }
+
+
+    public static boolean matchMethodSignature(IMethod m1, IMethod m2){
+        boolean matchCheck = false;
+
+
+        // Checking if method names match
+        if(m1.getName().equals(m2.getName())){
+            // Checking if number of parameters is the same
+            if(m1.getNumberOfParameters() == m2.getNumberOfParameters()){
+                // Checking if types of parameters is the same; Skipping first type since it is the reference class (this)
+                int numberOfParams = m1.getNumberOfParameters();
+
+                ArrayList<TypeReference> paramList1 = new ArrayList<>();
+                ArrayList<TypeReference> paramList2 = new ArrayList<>();
+                if(numberOfParams > 0){
+                    for(int i = 1; i < numberOfParams; i++) {
+                        paramList1.add(m1.getParameterType(i));
+                        paramList2.add(m2.getParameterType(i));
+                    }
+                    if(paramList1.equals(paramList2)){
+                        matchCheck = true;
+                    }
+                }
+            }
+        }
+
+
+        return matchCheck;
+    }
+
+    public static boolean matchMethodSignature(IMethod m, ArrayList<IMethod> methodList){
+        boolean matchCheck = false;
+
+        for(IMethod currMethod : methodList){
+            // Checking if method names match
+            if(m.getName().equals(currMethod.getName())){
+                // Checking if number of parameters is the same
+                if(m.getNumberOfParameters() == currMethod.getNumberOfParameters()){
+                    // Checking if types of parameters is the same; Skipping first type since it is the reference class (this)
+                    int numberOfParams = m.getNumberOfParameters();
+
+                    ArrayList<TypeReference> paramList1 = new ArrayList<>();
+                    ArrayList<TypeReference> paramList2 = new ArrayList<>();
+                    if(numberOfParams > 0){
+                        for(int i = 1; i < numberOfParams; i++) {
+                            paramList1.add(m.getParameterType(i));
+                            paramList2.add(currMethod.getParameterType(i));
+                        }
+                        if(paramList1.equals(paramList2)){
+                            matchCheck = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return matchCheck;
+    }
+
+    public static ArrayList<IMethod> getClassMethodList(String className, ClassHierarchy cha){
+        ArrayList<IMethod> returnMethods = new ArrayList<>();
+
+        for(IClass c : cha){
+            if(c.getName().toString().equals(className)){
+                if(c.getDirectInterfaces().isEmpty()){continue;}
+                returnMethods = new ArrayList<>(c.getDirectInterfaces().iterator().next().getAllMethods());
+            }
+        }
+
+
+        return returnMethods;
     }
 
     public static ArrayList<String> getClassStringMethods(String className, ClassHierarchy cha){
