@@ -19,15 +19,11 @@ import com.ibm.wala.ipa.callgraph.impl.Util;
 import com.ibm.wala.ipa.cha.ClassHierarchy;
 import com.ibm.wala.ipa.cha.IClassHierarchy;
 import com.ibm.wala.ipa.cha.ClassHierarchyFactory;
-import com.ibm.wala.ssa.DefUse;
-import com.ibm.wala.ssa.IR;
-import com.ibm.wala.ssa.SSAAbstractInvokeInstruction;
-import com.ibm.wala.ssa.SSANewInstruction;
-import com.ibm.wala.ssa.SSAInstruction;
-import com.ibm.wala.ssa.SymbolTable;
+import com.ibm.wala.ssa.*;
 import com.ibm.wala.types.TypeReference;
 import com.uwaterloo.wala.workshop.utils.ScopeUtil;
 import com.uwaterloo.wala.workshop.objects.MethodObject;
+import org.apache.logging.log4j.core.util.SystemNanoClock;
 
 import java.io.FileWriter;
 
@@ -49,9 +45,17 @@ public class FrameworkAnalyzer {
         ArrayList<DefaultEntrypoint> entrypoints = new ArrayList<>();
 
         System.out.println("Starting.....");
+
+
+        // testing ds
+        ArrayList<String> concernedClasses = new ArrayList<>();
+
         for (IClass c : cha){
 
-//             if(!c.getName().toString().contains("BluetoothService")) continue;
+//            System.out.println("class namessses: " + c.getName().toString());
+             if(!c.getName().toString().contains("NotificationManagerService")) continue;
+
+            boolean myCheck = true;
 
             entrypoints = new ArrayList<>();
             IClass binderClass = null;
@@ -61,6 +65,11 @@ public class FrameworkAnalyzer {
             ArrayList<IMethod> apiMehtodList = new ArrayList<>();
 //            ArrayList<String> interfaceMethods = new ArrayList<>();
             ArrayList<IMethod> interfaceMethodList = new ArrayList<>();
+
+
+
+
+
 
 
             // System.out.println("Class: " + c.getName());
@@ -154,6 +163,7 @@ public class FrameworkAnalyzer {
 
                     // Getting the specific call to addServie/publishBinderService
                     if (s instanceof com.ibm.wala.ssa.SSAAbstractInvokeInstruction){
+//                        System.out.println("here 1");
                         com.ibm.wala.ssa.SSAAbstractInvokeInstruction call = (com.ibm.wala.ssa.SSAAbstractInvokeInstruction) s;
                         if(call.getCallSite().getDeclaredTarget().getName().toString().equals("addService") 
                         || call.getCallSite().getDeclaredTarget().getName().toString().equals("publishBinderService")){
@@ -172,6 +182,8 @@ public class FrameworkAnalyzer {
                             //if not static then the 1st paramter will be this.
                             if(call.toString().contains("invokevirtual")){
                                 paraindex++;
+                            } else{
+                                System.out.println("Not INVOKEVIRTUAL");
                             }
 
                             DefUse du = node.getDU();
@@ -196,10 +208,11 @@ public class FrameworkAnalyzer {
                             String value = null;
                             
                             if(second instanceof com.ibm.wala.ssa.SSAGetInstruction){
+                                System.out.println("here 2");
                                 com.ibm.wala.ssa.SSAGetInstruction secondcall = (com.ibm.wala.ssa.SSAGetInstruction) second;
 //                                 System.out.println("HEREEE");
                                 if(secondcall.getDeclaredFieldType().getName().toString().equals("Landroid/os/IBinder")){
-//                                     System.out.println("HIIII");
+                                     System.out.println("HIIII");
 
                                     serviceClass = node.getMethod().getDeclaringClass();
                                     String servicename = serviceClass.getName().toString();
@@ -217,24 +230,36 @@ public class FrameworkAnalyzer {
                                     }
                                 }
                                 else{
-                                    // System.out.println(secondcall.getDeclaredFieldType().getName().toString());
-                                    // System.out.println(node.getMethod().getDeclaringClass().getName().toString());
+                                     System.out.println(secondcall.getDeclaredFieldType().getName().toString());
+                                     System.out.println(node.getMethod().getDeclaringClass().getName().toString());
                                     key = secondcall.getDeclaredFieldType().getName().toString();
                                     value = node.getMethod().getDeclaringClass().getName().toString();
                                 }
                             }
                             else if(second instanceof com.ibm.wala.ssa.SSAAbstractInvokeInstruction){
+                                System.out.println("here 3");
                                 com.ibm.wala.ssa.SSAAbstractInvokeInstruction secondcall = (com.ibm.wala.ssa.SSAAbstractInvokeInstruction)second;
                                 key = secondcall.getCallSite().getDeclaredTarget().getDeclaringClass().getName().toString();
                                 value = node.getMethod().getDeclaringClass().getName().toString();
                             }
                             else if(second instanceof com.ibm.wala.ssa.SSANewInstruction){
+                                System.out.println("here 4");
+                                myCheck = false;
+                                concernedClasses.add(c.getName().toString());
                                 com.ibm.wala.ssa.SSANewInstruction secondcall = (com.ibm.wala.ssa.SSANewInstruction)second;
                                 key = secondcall.getConcreteType().getName().toString();
                                 value = node.getMethod().getDeclaringClass().getName().toString();
 
+                            }else if (second instanceof SSACheckCastInstruction){
+                                SSACheckCastInstruction secondcall = (com.ibm.wala.ssa.SSACheckCastInstruction) second;
+                                if(du.getDef(secondcall.getUse(0)) instanceof SSANewInstruction){
+                                    SSANewInstruction secondcallnewinst = (SSANewInstruction) du.getDef(secondcall.getUse(0));
+                                    System.out.println("NEW CHECK " + secondcallnewinst.getConcreteType().getName().toString());
+
+                                }
                             }
 
+//                            if(myCheck)continue;
                           
 
                             for (IClass c1 : cha){
@@ -270,6 +295,8 @@ public class FrameworkAnalyzer {
                                 }else{
                                     interfaceMethodList = getClassMethodList(binderSuperClass.getName().toString(), cha);
                                 }
+
+                                // System.out.println("interfacemethodlist: " + interfaceMethodList.toString());
 
                                 for(IMethod m : binderClass.getDeclaredMethods() ){
                                     if(m.isPublic()){
@@ -393,6 +420,8 @@ public class FrameworkAnalyzer {
                     }
                     ArrayList<String> permissions = new ArrayList<>();
 
+                    boolean containsUserIdCheck = false;
+
                     for(Iterator<SSAInstruction> it = node.getIR().iterateAllInstructions(); it.hasNext();){
                         SSAInstruction s = it.next();
                         if(s instanceof com.ibm.wala.ssa.SSAAbstractInvokeInstruction){
@@ -408,11 +437,59 @@ public class FrameworkAnalyzer {
 
                                 int paramValueNumber = ((SSAAbstractInvokeInstruction) s).getUse(paramIndex);
                                 SymbolTable st = node.getIR().getSymbolTable();
-                                String permission = st.getStringValue(paramValueNumber);
-                                // System.out.println("Permission: " + permission.toString());
-                                permissions.add(permission);
+                                if(st.isStringConstant(paramValueNumber)){
+                                    String permission = st.getStringValue(paramValueNumber);
+                                    // System.out.println("Permission: " + permission.toString());
+                                    permissions.add(permission);
+                                }
+
 
                             }
+                        } else if(s instanceof SSAConditionalBranchInstruction){
+                            SSAConditionalBranchInstruction this_s = (SSAConditionalBranchInstruction) s;
+                            int firstUse = this_s.getUse(0);
+                            int secondUse = this_s.getUse(1);
+
+                            SymbolTable st = node.getIR().getSymbolTable();
+                            DefUse this_du = node.getDU();
+
+
+
+
+                            if(this_du.getDef(firstUse) == null){
+//                                System.out.println("predicate 1: null");
+                            }else{
+//                                System.out.println("predicate 1: " + this_du.getDef(firstUse));
+                                if(this_du.getDef(firstUse) instanceof SSAAbstractInvokeInstruction){
+                                    String m1 = ((SSAAbstractInvokeInstruction) this_du.getDef(firstUse)).getCallSite().getDeclaredTarget().getName().toString();
+                                    System.out.println("Predicate 1 Method Name: " + m1);
+                                    if(m1.toLowerCase().contains("userid")){
+                                        containsUserIdCheck = true;
+                                        if(st.isIntegerConstant(secondUse)){
+                                            System.out.println("Predicate 2 Integer Value: " + st.getIntValue(secondUse));
+                                        }
+                                    }
+                                }
+                            }
+
+                            if(this_du.getDef(secondUse) == null){
+//                                System.out.println("predicate 2: null");
+                            }else{
+//                                System.out.println("predicate 2: " + this_du.getDef(secondUse).toString());
+                                if(this_du.getDef(secondUse) instanceof SSAAbstractInvokeInstruction){
+                                    String m2 = ((SSAAbstractInvokeInstruction) this_du.getDef(secondUse)).getCallSite().getDeclaredTarget().getName().toString();
+                                    System.out.println("predicate 2 method name: " + m2);
+                                    if(m2.toLowerCase().contains("userid")){
+                                        containsUserIdCheck = true;
+                                        if(st.isIntegerConstant(firstUse)){
+                                            System.out.println("Predicate 1 Integer Value: " + st.getIntValue(firstUse));
+                                        }
+                                    }
+                                }
+                            }
+
+
+
                         }
                     }
                     if(permissions.size() >= 1){
@@ -422,6 +499,11 @@ public class FrameworkAnalyzer {
                         for(String methodName : apiMethodsInvoked){
                             System.out.println("Method Invoked: " + methodName);
                         }
+                    }
+                    if(containsUserIdCheck){
+                        System.out.println("Contains UserId Check: true");
+                    }else{
+                        System.out.println("Contains UserId Check: false");
                     }
                     System.out.println("********************");
 
@@ -433,7 +515,7 @@ public class FrameworkAnalyzer {
         }
 
  
-
+        System.out.println("\n\n CHECK THIS: " + concernedClasses.toString());
         
     }
 
